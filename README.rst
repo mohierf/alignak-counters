@@ -6,8 +6,8 @@ Alignak Backend counters
 Build status (stable release)
 ----------------------------------------
 
-.. image:: https://travis-ci.org/Alignak-monitoring-contrib/alignak-counters.svg?branch=master
-    :target: https://travis-ci.org/Alignak-monitoring-contrib/alignak-counters
+.. image:: https://travis-ci.org/mohierf/alignak-counters.svg?branch=master
+    :target: https://travis-ci.org/mohierf/alignak-counters
 
 .. image:: https://readthedocs.org/projects/alignak-counters/badge/?version=latest
   :target: http://alignak-counters.readthedocs.org/en/latest/?badge=latest
@@ -17,8 +17,8 @@ Build status (stable release)
 Build status (development release)
 ----------------------------------------
 
-.. image:: https://travis-ci.org/Alignak-monitoring-contrib/alignak-counters.svg?branch=develop
-    :target: https://travis-ci.org/Alignak-monitoring-contrib/alignak-counters
+.. image:: https://travis-ci.org/mohierf/alignak-counters.svg?branch=develop
+    :target: https://travis-ci.org/mohierf/alignak-counters
 
 .. image:: https://readthedocs.org/projects/alignak-counters/badge/?version=develop
   :target: http://alignak-counters.readthedocs.org/en/develop/?badge=develop
@@ -38,7 +38,7 @@ This package contains an utility tool `alignak_get_counters` that allows to sear
 Bugs, issues and contributing
 ----------------------------------------
 
-Please report any issue using the project `GitHub repository<https://github.com/Alignak-monitoring-contrib/alignak-counters/issues>`_.
+Please report any issue using the project `GitHub repository<https://github.com/mohierf/alignak-counters/issues>`_.
 
 License
 ----------------------------------------
