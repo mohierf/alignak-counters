@@ -1,0 +1,4 @@
+# this is the requirements dedicated to tests.
+pylint
+pep8
+pep257

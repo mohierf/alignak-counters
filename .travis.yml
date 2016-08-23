@@ -1,0 +1,19 @@
+language: python
+sudo: true
+python:
+  - "2.7"
+#  - "3.4"
+
+services:
+  - mongodb
+
+# command to install dependencies
+# some are only used for travis/coveralls so we are installing them here only
+install:
+  - bash setup_test.sh
+
+script:
+  - pip freeze  # so to help eventual debug: know what exact versions are in use can be rather useful.
+  - pep8 --max-line-length=100 --exclude='*.pyc, *.cfg, *.log' --ignore='E402' alignak_counters/*
+  - pylint --rcfile=.pylintrc alignak_counters/*
+  - pep257 --select=D300 alignak_counters
