@@ -253,25 +253,22 @@ class BackendExport(object):
             return False
 
         self.log("Found %d matching hosts" % len(result['_items']))
+        hosts = []
         for item in result['_items']:
             self.log(" - host: %s" % item['name'])
-            self.hosts.append(item['_id'])
+            hosts.append((item['_id'], item['name']))
 
-        return True
+        return hosts
 
-    def get_services(self):
+    def get_services(self, host_id):
         """
         Search matching services in the backend
 
         :return:
         """
-        if not self.hosts:
-            self.errors_found.append("No hosts to search services for")
-            return False
-
         params = {
             'sort': 'name',
-            'where': json.dumps({"host": {"$in": self.hosts}}),
+            'where': json.dumps({"host": host_id}),
             'embedded': json.dumps({'host': 1}),
             'projection': json.dumps({"_id": 1, "host": 1, "name": 1})
         }
@@ -288,12 +285,12 @@ class BackendExport(object):
             return False
 
         self.log("Found %d matching services" % len(result['_items']))
+        services = []
         for item in result['_items']:
             self.log(" - service: %s/%s" % (item['host']['name'], item['name']))
-            # self.log(" - service: %s/%s" % (item['host.name'], item['name']))
-            self.services.append(item['_id'])
+            services.append((item['_id'], item['name']))
 
-        return True
+        return services
 
     def get_counters(self):
         """
@@ -301,44 +298,44 @@ class BackendExport(object):
 
         :return: True / False if some counters were found
         """
-        if not self.get_hosts():
-            return False
-
-        if not self.get_services():
-            return False
-
-        # Log check results
-        result = self.backend.get_all('logcheckresult', params={
-            'sort': '-last_check',
-            'where': json.dumps({"service": {"$in": self.services}}),
-            'embedded': json.dumps({'host': 1, 'service': 1}),
-            'projection': json.dumps(
-                {
-                    "host": 1, "service": 1,
-                    "last_check": 1, "state": 1, "state_type": 1, "perf_data": 1
+        for host_id, host_name in self.get_hosts():
+            for service_id, service_name in self.get_services(host_id):
+                # Log check results
+                params = {
+                    'sort': '-last_check',
+                    'where': json.dumps({"service": service_id}),
+                    'embedded': json.dumps({'host': 1, 'service': 1}),
+                    'projection': json.dumps(
+                        {
+                            "last_check": 1, "state": 1, "state_type": 1, "perf_data": 1
+                        }
+                    )
                 }
-            )
-        })
-        if '_items' not in result or len(result['_items']) == 0:
-            self.errors_found.append("No items matching the search query")
-            return False
+                result = self.backend.get('logcheckresult', params=params)
+                if '_items' not in result or len(result['_items']) == 0:
+                    self.errors_found.append("No log matching the search query")
+                    return False
 
-        self.log("Found %d matching items" % len(result['_items']))
-        for item in result['_items']:
-            date = get_iso_date(float(item['last_check']))
+                self.log("Found %d matching items for %s/%s" % (len(result['_items']), host_name, service_name))
+                for item in result['_items']:
+                    date = get_iso_date(float(item['last_check']))
 
-            try:
-                p = PerfDatas(item['perf_data'])
-                for metric in sorted(p):
-                    # self.log("metrics, service perfdata metric: %s" % m.__dict__)
-                    if self.targeted_metrics == ['all'] or metric.name in self.targeted_metrics:
-                        self.log("found: %s - %s = %s" % (date, metric.name, metric.value))
-                        if metric.name not in self.counters:
-                            self.counters[metric.name] = []
-                        self.counters[metric.name].append((item['last_check'], metric.value))
-            except Exception as exp:
-                self.log("exception: %s" % str(exp))
-                self.log("traceback: %s" % traceback.format_exc())
+                    try:
+                        p = PerfDatas(item['perf_data'])
+                        for metric in sorted(p):
+                            # self.log("metrics, service perfdata metric: %s" % m.__dict__)
+                            if self.targeted_metrics == ['all'] or metric.name in self.targeted_metrics:
+                                self.log("found: %s - %s = %s" % (date, metric.name, metric.value))
+                                if host_name not in self.counters:
+                                    self.counters[host_name] = {}
+                                if service_name not in self.counters[host_name]:
+                                    self.counters[host_name][service_name] = {}
+                                if metric.name not in self.counters[host_name][service_name]:
+                                    self.counters[host_name][service_name][metric.name] = []
+                                    self.counters[host_name][service_name][metric.name].append((item['last_check'], metric.value))
+                    except Exception as exp:
+                        self.log("exception: %s" % str(exp))
+                        self.log("traceback: %s" % traceback.format_exc())
 
         if len(self.counters.keys()) == 0:
             self.errors_found.append("No performance data metrics matching the searched counters")
