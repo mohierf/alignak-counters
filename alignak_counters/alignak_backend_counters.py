@@ -20,23 +20,25 @@
 # along with Alignak Backend Import.  If not, see <http://www.gnu.org/licenses/>.
 
 """
-alignak_get_counters command line interface::
+alignak_backend_counters command line interface::
 
     Usage:
-        {command} [-h] [-v]
+        {command} [-h]
+        {command} [-v] [-q]
                   [-b=url] [-u=username] [-p=password]
                   [-H=hostnames] [-S=services] [-M=metrics]
 
     Options:
-        -h, --help                  Show this screen.
-        -V, --version               Show application version.
-        -b, --backend url           Specify backend URL [default: http://127.0.0.1:5000]
-        -u, --username username     Backend login username [default: admin]
-        -p, --password password     Backend login password [default: admin]
-        -v, --verbose               Run in verbose mode (more info to display)
-        -H, --hostnames hosts       Extract data for a list of hosts [default: all]
-        -S, --services services     Extract data for a list of services [default: all]
-        -M, --metrics metrics       Extract data for a list of counters [default: all]
+        -h, --help                      Show this screen.
+        -V, --version                   Show application version.
+        -b, --backend url               Specify backend URL [default: http://127.0.0.1:5000]
+        -u, --username username         Backend login username [default: admin]
+        -p, --password password         Backend login password [default: admin]
+        -v, --verbose                   Run in verbose mode (more info to display)
+        -q, --quiet                     Run in quiet mode (display nothing)
+        -H, --hostnames hosts           Extract data for a list of hosts [default: all]
+        -S, --services services         Extract data for a list of services [default: all]
+        -M, --metrics metrics           Extract data for a list of counters [default: all]
 
     Use cases:
         Display help message:
@@ -65,6 +67,7 @@ from __future__ import print_function
 
 import traceback
 import json
+import logging
 
 import time
 from calendar import timegm
@@ -78,6 +81,13 @@ from alignak_backend_client.client import Backend, BackendException
 
 from alignak_counters import __version__
 from alignak_counters.perfdata import PerfDatas
+
+# Configure logger
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)8s - %(message)s')
+# Name the logger to get the backend client logs
+logger = logging.getLogger('alignak-backend-counters')
+logger.setLevel('INFO')
 
 
 def get_ts_date(param_date, date_format):
@@ -162,41 +172,48 @@ class BackendExport(object):
         except DocoptExit:
             print(
                 "Command line parsing error.\n"
-                "alignak_get_counters -h will display the command line parameters syntax."
+                "alignak_backend_counters -h will display the command line parameters syntax."
             )
             exit(64)
 
         # Verbose
         self.verbose = False
         if '--verbose' in args and args['--verbose']:
+            logger.setLevel('DEBUG')
             self.verbose = True
-        print("Verbose mode: %s" % self.verbose)
+
+        # Quiet mode
+        self.quiet = False
+        if args['--quiet']:
+            logger.setLevel('NOTSET')
+            self.quiet = True
+
+        logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        logger.info("alignak-backend-counters, version: %s", __version__)
+        logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
         # Backend and URL
         self.backend = None
         self.backend_url = args['--backend']
-        self.log("Backend URL: %s" % self.backend_url)
-        # print("Backend URL: %s" % self.backend_url)
+        logger.debug("Backend URL: %s", self.backend_url)
 
         # Backend authentication
         self.username = args['--username']
         self.password = args['--password']
-        self.log("Backend login with credentials: %s/%s" % (self.username, self.password))
+        logger.debug("Backend login with credentials: %s/%s", self.username, self.password)
 
         # Concerned hosts
-        self.hosts = []
         self.targeted_host = args['--hostnames'].split(',')
-        self.log("Targeted hosts: %s" % self.targeted_host)
+        logger.debug("Targeted hosts: %s", self.targeted_host)
 
         # Concerned services
-        self.services = []
         self.targeted_service = args['--services'].split(',')
-        self.log("Targeted services: %s" % self.targeted_service)
+        logger.debug("Targeted services: %s", self.targeted_service)
 
         # Concerned metrics
         self.metrics = []
         self.targeted_metrics = args['--metrics'].split(',')
-        self.log("Targeted counters: %s" % self.targeted_metrics)
+        logger.debug("Targeted counters: %s", self.targeted_metrics)
 
         # Fetched counters
         self.counters = {}
@@ -207,7 +224,7 @@ class BackendExport(object):
 
         :return: None
         """
-        print("Backend authentication ...")
+        logger.info("Authenticating to %s...", self.backend_url)
         try:
             # Backend authentication with token generation
             # headers = {'Content-Type': 'application/json'}
@@ -222,75 +239,8 @@ class BackendExport(object):
             print("Access is denied!")
             return False
 
-        print("Access granted")
+        logger.info("Authenticated.")
         return True
-
-    def log(self, message):
-        """
-        Display message if in verbose mode
-
-        :param message: message to display
-        :type message: str
-        :return: None
-        """
-        if self.verbose:
-            print(message)
-
-    def get_hosts(self):
-        """
-        Search matching hosts in the backend
-        :return:
-        """
-        params = {
-            'sort': 'name',
-            'projection': json.dumps({"_id": 1, "name": 1})
-        }
-        if self.targeted_host != ['all']:
-            params.update({'where': json.dumps({"name": {"$in": self.targeted_host}})})
-        result = self.backend.get_all('host', params)
-        if '_items' not in result:
-            self.errors_found.append("No matching hosts found")
-            return False
-
-        self.log("Found %d matching hosts" % len(result['_items']))
-        hosts = []
-        for item in result['_items']:
-            self.log(" - host: %s" % item['name'])
-            hosts.append((item['_id'], item['name']))
-
-        return hosts
-
-    def get_services(self, host_id):
-        """
-        Search matching services in the backend
-
-        :return:
-        """
-        params = {
-            'sort': 'name',
-            'where': json.dumps({"host": host_id}),
-            'embedded': json.dumps({'host': 1}),
-            'projection': json.dumps({"_id": 1, "host": 1, "name": 1})
-        }
-        if self.targeted_service != ['all']:
-            params.update({'where': json.dumps(
-                {"$and": [
-                    {"host": {"$in": self.hosts}},
-                    {"name": {"$in": self.targeted_service}}
-                ]}
-            )})
-        result = self.backend.get_all('service', params)
-        if '_items' not in result or len(result['_items']) == 0:
-            self.errors_found.append("No matching services found")
-            return False
-
-        self.log("Found %d matching services" % len(result['_items']))
-        services = []
-        for item in result['_items']:
-            self.log(" - service: %s/%s" % (item['host']['name'], item['name']))
-            services.append((item['_id'], item['name']))
-
-        return services
 
     def get_counters(self):
         """
@@ -298,60 +248,81 @@ class BackendExport(object):
 
         :return: True / False if some counters were found
         """
-        for host_id, host_name in self.get_hosts():
-            for service_id, service_name in self.get_services(host_id):
-                # Log check results
-                params = {
-                    'sort': '-last_check',
-                    'where': json.dumps({"service": service_id}),
-                    'embedded': json.dumps({'host': 1, 'service': 1}),
-                    'projection': json.dumps(
-                        {
-                            "last_check": 1, "state": 1, "state_type": 1, "perf_data": 1
-                        }
-                    )
+        # Log check results
+        params = {
+            'sort': '-last_check',
+            'projection': json.dumps(
+                {
+                    "host_name": 1, "service_name": 1,
+                    "last_check": 1, "state": 1, "state_type": 1, "perf_data": 1
                 }
-                result = self.backend.get('logcheckresult', params=params)
-                if '_items' not in result or len(result['_items']) == 0:
-                    self.errors_found.append("No log matching the search query")
-                    return False
+            )
+        }
+        if len(self.targeted_service) > 1:
+            if len(self.targeted_host) > 1:
+                params['where'] = {"$and": [
+                    {"host_name": {"$in": self.targeted_host}},
+                    {"service_name": {"$in": self.targeted_service}}
+                ]}
+            else:
+                params['where'] = {"$and": [
+                    {"host_name": {"$regex": ".*" + self.targeted_host[0] + ".*"}},
+                    {"service_name": {"$in": self.targeted_service}}
+                ]}
+        else:
+            if len(self.targeted_host) > 1:
+                params['where'] = {"$and": [
+                    {"host_name": {"$in": self.targeted_host}},
+                    {"service_name": {"$regex": ".*" + self.targeted_service[0] + ".*"}}
+                ]}
+            else:
+                params['where'] = {"$and": [
+                    {"host_name": {"$regex": ".*%s.*" % self.targeted_host[0]}},
+                    {"service_name": {"$regex": ".*" + self.targeted_service[0] + ".*"}}
+                ]}
+        params['where'] = json.dumps(params['where'])
 
-                self.log("Found %d matching items for %s/%s" % (len(result['_items']), host_name, service_name))
-                for item in result['_items']:
-                    date = get_iso_date(float(item['last_check']))
+        logger.debug("Search parameters: %s", params)
 
-                    try:
-                        p = PerfDatas(item['perf_data'])
-                        for metric in sorted(p):
-                            # self.log("metrics, service perfdata metric: %s" % m.__dict__)
-                            if self.targeted_metrics == ['all'] or metric.name in self.targeted_metrics:
-                                self.log("found: %s - %s = %s" % (date, metric.name, metric.value))
-                                if host_name not in self.counters:
-                                    self.counters[host_name] = {}
-                                if service_name not in self.counters[host_name]:
-                                    self.counters[host_name][service_name] = {}
-                                if metric.name not in self.counters[host_name][service_name]:
-                                    self.counters[host_name][service_name][metric.name] = []
-                                    self.counters[host_name][service_name][metric.name].append((item['last_check'], metric.value))
-                    except Exception as exp:
-                        self.log("exception: %s" % str(exp))
-                        self.log("traceback: %s" % traceback.format_exc())
+        result = self.backend.get('logcheckresult', params=params)
+        if '_items' not in result or len(result['_items']) == 0:
+            logger.error("No check result log matching the search query: %s", params)
+            self.errors_found.append("No log matching the search query: %s" % params)
+            return []
+
+        logger.info("Found %d matching items", len(result['_items']))
+        for item in result['_items']:
+            logger.debug("Parsing: %s", item)
+            date = get_iso_date(float(item['last_check']))
+
+            try:
+                p = PerfDatas(item['perf_data'])
+                for metric in sorted(p):
+                    # self.log("metrics, service perfdata metric: %s" % m.__dict__)
+                    if self.targeted_metrics == ['all'] or metric.name in self.targeted_metrics:
+                        logger.debug("found: %s - %s = %s", date, metric.name, metric.value)
+                        if item['host_name'] not in self.counters:
+                            self.counters[item['host_name']] = {}
+                        if item['service_name'] not in self.counters[item['host_name']]:
+                            self.counters[item['host_name']][item['service_name']] = {}
+                        if metric.name not in self.counters[item['host_name']][item['service_name']]:
+                            self.counters[item['host_name']][item['service_name']][metric.name] = []
+                        self.counters[item['host_name']][item['service_name']][metric.name].append((item['last_check'], metric.value))
+            except Exception as exp:
+                logger.exception("exception: %s" % str(exp))
 
         if len(self.counters.keys()) == 0:
+            logger.error("No performance data metrics matching the searched counters")
             self.errors_found.append("No performance data metrics matching the searched counters")
             return False
 
-        self.log("Got %d counters" % len(self.counters.keys()))
+        logger.info("Got %d counters", len(self.counters.keys()))
         return True
-
 
 def main():
     """
     Main function
     """
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-    print("alignak_get_counters, version: %s" % __version__)
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     exportation = BackendExport()
 
     # Authenticate on Backend
@@ -361,16 +332,17 @@ def main():
     # Export from the backend
     if not exportation.get_counters():
         print("################################################################################")
-        print("alignak_get_counters, errors encountered during extraction :")
+        print("alignak_backend_counters, errors encountered during extraction :")
 
         for error in exportation.errors_found:
             print("- %s" % error)
         print("################################################################################")
         exit(4)
 
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-    print("alignak_get_counters, found elements: ")
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    logger.info("alignak_backend_counters, found elements: ")
+    logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    logger.info(json.dumps(exportation.counters))
     print(json.dumps(exportation.counters))
 
 if __name__ == "__main__":  # pragma: no cover
