@@ -285,7 +285,7 @@ class BackendExport(object):
         logger.debug("Search parameters: %s", params)
 
         result = self.backend.get('logcheckresult', params=params)
-        if '_items' not in result or len(result['_items']) == 0:
+        if '_items' not in result or not result['_items']:
             logger.error("No check result log matching the search query: %s", params)
             self.errors_found.append("No log matching the search query: %s" % params)
             return []
@@ -305,19 +305,22 @@ class BackendExport(object):
                             self.counters[item['host_name']] = {}
                         if item['service_name'] not in self.counters[item['host_name']]:
                             self.counters[item['host_name']][item['service_name']] = {}
-                        if metric.name not in self.counters[item['host_name']][item['service_name']]:
+                        if metric.name not in self.counters[item['host_name']][
+                                item['service_name']]:
                             self.counters[item['host_name']][item['service_name']][metric.name] = []
-                        self.counters[item['host_name']][item['service_name']][metric.name].append((item['last_check'], metric.value))
+                        self.counters[item['host_name']][item['service_name']][metric.name].append(
+                            (item['last_check'], metric.value))
             except Exception as exp:
-                logger.exception("exception: %s" % str(exp))
+                logger.exception("exception: %s", str(exp))
 
-        if len(self.counters.keys()) == 0:
+        if not self.counters.keys():
             logger.error("No performance data metrics matching the searched counters")
             self.errors_found.append("No performance data metrics matching the searched counters")
             return False
 
         logger.info("Got %d counters", len(self.counters.keys()))
         return True
+
 
 def main():
     """
@@ -339,9 +342,8 @@ def main():
         print("################################################################################")
         exit(4)
 
-    logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     logger.info("alignak_backend_counters, found elements: ")
-    logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     logger.info(json.dumps(exportation.counters))
     print(json.dumps(exportation.counters))
 
